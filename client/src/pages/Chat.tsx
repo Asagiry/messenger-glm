@@ -58,6 +58,15 @@ export default function Chat() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showSearch, setShowSearch] = useState(false);
 
+  // Export/Import state
+  const [showExportImport, setShowExportImport] = useState(false);
+  const [exportData, setExportData] = useState('');
+  const [importData, setImportData] = useState('');
+  const [importedMessages, setImportedMessages] = useState<any[]>([]);
+  const [importedParticipants, setImportedParticipants] = useState<any[]>([]);
+  const [importError, setImportError] = useState('');
+  const [showImportPreview, setShowImportPreview] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,7 +107,6 @@ export default function Chat() {
         const data = await api.get(`/messages/history/${peerId}?limit=30`);
         setMessages(data);
         setHasMore(data.length >= 30);
-        // Mark as read
         send({ type: 'mark_read', peerId });
       } catch {}
       setLoadingMessages(false);
@@ -107,6 +115,11 @@ export default function Chat() {
     loadPeer();
     loadMessages();
     setPeerTyping(false);
+    setShowExportImport(false);
+    setExportData('');
+    setImportData('');
+    setImportedMessages([]);
+    setShowImportPreview(false);
   }, [peerId]);
 
   // Handle WebSocket messages
@@ -121,7 +134,6 @@ export default function Chat() {
             if (prev.some((m) => m.id === msg.id)) return prev;
             return [...prev, msg];
           });
-          // Mark as read if we're viewing this chat
           if (msg.sender_id === peerId) {
             send({ type: 'mark_read', peerId: msg.sender_id });
           }
@@ -244,7 +256,6 @@ export default function Chat() {
       if (data.length < 30) setHasMore(false);
       setMessages((prev) => [...data, ...prev]);
 
-      // Restore scroll position
       requestAnimationFrame(() => {
         if (container) {
           container.scrollTop = container.scrollHeight - prevScrollHeight;
@@ -282,6 +293,33 @@ export default function Chat() {
     navigate(`/chat/${id}`);
     setShowSearch(false);
     setSearchQuery('');
+  };
+
+  // Export chat history
+  const handleExport = async () => {
+    if (!peerId) return;
+    try {
+      const data = await api.get(`/messages/export/${peerId}`);
+      setExportData(data.data);
+    } catch {}
+  };
+
+  // Import chat history
+  const handleImport = async () => {
+    if (!importData.trim()) return;
+    setImportError('');
+    try {
+      const data = await api.post('/messages/import', { data: importData.trim() });
+      setImportedMessages(data.messages);
+      setImportedParticipants(data.participants);
+      setShowImportPreview(true);
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed');
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
   };
 
   return (
@@ -334,11 +372,103 @@ export default function Chat() {
                 />
               ))}
               <div ref={messagesEndRef} />
+
+              {/* Import Preview Overlay */}
+              {showImportPreview && importedMessages.length > 0 && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col border border-slate-600/50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">Imported Chat Preview</h3>
+                      <button
+                        onClick={() => { setShowImportPreview(false); setImportedMessages([]); }}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="text-sm text-slate-400 mb-3">
+                      Participants: {importedParticipants.map((p: any) => p.nickname).join(' & ')}
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-1">
+                      {importedMessages.map((msg: any, idx: number) => (
+                        <div key={idx} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+                            msg.sender_id === user?.id ? 'bg-indigo-600/50 text-slate-200' : 'bg-slate-700/50 text-slate-200'
+                          }`}>
+                            <p className="break-words">{msg.content}</p>
+                            <span className="text-[10px] text-slate-400">{formatTime(msg.created_at)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Export/Import Bar */}
+            {showExportImport && peerId && (
+              <div className="px-4 py-3 border-t border-slate-700/50 bg-slate-800/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExport}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Export Chat
+                  </button>
+                  {exportData && (
+                    <button
+                      onClick={() => copyToClipboard(exportData)}
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors"
+                    >
+                      Copy Base64
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowExportImport(false)}
+                    className="ml-auto text-slate-400 hover:text-white text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+                {exportData && (
+                  <div className="bg-slate-900/50 rounded-lg p-3 max-h-24 overflow-y-auto">
+                    <p className="text-xs text-slate-400 font-mono break-all">{exportData}</p>
+                  </div>
+                )}
+                <div className="border-t border-slate-700/30 pt-3">
+                  <p className="text-sm text-slate-300 mb-2">Import Chat History</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={importData}
+                      onChange={(e) => setImportData(e.target.value)}
+                      placeholder="Paste base64-encoded chat data..."
+                      className="flex-1 px-3 py-2 bg-slate-900/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-500 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                    <button
+                      onClick={handleImport}
+                      disabled={!importData.trim()}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-30"
+                    >
+                      Import
+                    </button>
+                  </div>
+                  {importError && (
+                    <p className="text-xs text-red-400 mt-1">{importError}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <MessageInput
               onSend={handleSendMessage}
               onTyping={handleTyping}
               onStopTyping={handleStopTyping}
+              showExportImport={showExportImport}
+              onToggleExportImport={() => setShowExportImport(!showExportImport)}
             />
           </>
         ) : (

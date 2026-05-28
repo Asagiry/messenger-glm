@@ -30,7 +30,6 @@ if [ -d messenger ]; then
 else
   echo "Cloning repository..."
   git clone https://github.com/$(git config --global user.name 2>/dev/null || echo "unknown")/messenger.git 2>/dev/null || {
-    # If clone fails, we'll sync via rsync from local
     echo "Clone not available, will use rsync"
   }
 fi
@@ -60,6 +59,10 @@ else
   echo "CORS_ORIGIN=http://glm-messenger.voimaxgm.online" >> .env
 fi
 
+# Create uploads directory for avatar storage
+echo "Creating uploads directory..."
+mkdir -p server/uploads
+
 # Install server dependencies
 echo "Installing server dependencies..."
 cd server
@@ -72,7 +75,7 @@ cd client
 npm install
 cd ..
 
-# Run migrations
+# Run migrations (includes new password_resets table)
 echo "Running database migrations..."
 cd server
 npx ts-node src/db/migrate.ts
