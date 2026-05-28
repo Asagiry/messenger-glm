@@ -34,11 +34,26 @@ async function migrate() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_participants ON messages(sender_id, receiver_id, created_at DESC);
     `);
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_receiver_unread ON messages(receiver_id, status) WHERE status = 'delivered';
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token) WHERE used = FALSE;
     `);
 
     await client.query('COMMIT');

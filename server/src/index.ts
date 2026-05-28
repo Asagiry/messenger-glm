@@ -9,12 +9,14 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import messageRoutes from './routes/messages';
 import { setupWebSocket } from './ws/handler';
+import { logger } from './utils/logger';
 
 const app = express();
 const server = createServer(app);
 const PORT = parseInt(process.env.PORT || '80', 10);
 
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
+const UPLOADS_DIR = path.resolve(__dirname, '../uploads');
 
 // CORS
 app.use(cors({
@@ -29,6 +31,9 @@ app.use(cookieParser());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
+
+// Serve uploaded avatar files
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Serve React static files
 app.use(express.static(CLIENT_DIST));
@@ -47,12 +52,15 @@ async function start() {
   try {
     // Test DB connection
     await pool.query('SELECT 1');
+    logger.info('Database connected');
     console.log('Database connected');
 
     server.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`);
       console.log(`Server running on port ${PORT}`);
     });
   } catch (err) {
+    logger.error('Failed to start server', { error: String(err) });
     console.error('Failed to start server:', err);
     process.exit(1);
   }

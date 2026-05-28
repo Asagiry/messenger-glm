@@ -23,3 +23,5 @@ coverage/
 .mcp.json
 *.bat
 id_ed25519
+uploads/
+server.log
